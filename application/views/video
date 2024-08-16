@@ -1,0 +1,667 @@
+<!-- this is form works corectly but not download works
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <link rel="stylesheet" href="<?= base_url() ?>asset/style.css">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <style>
+        .progress-bar-danger {
+            background-color: #dc3545; /* Red */
+        }
+        .progress-bar-warning {
+            background-color: #ffc107; /* Yellow */
+        }
+        .progress-bar-success {
+            background-color: #28a745; /* Green */
+        }
+    </style>
+</head>
+<body>
+    <header style="height: 50px;display:flex;">
+        <div style="display: flex;align-items: center;">
+            <img src="<?=base_url()?>asset/logo" alt="" style="height:175;width:173px">
+        </div>
+        <div style="display: flex;margin-left: 800px;">
+            <nav>
+                <a href="https://www.tiktok.com" target="_blank">TikTok</a>
+                <a href="https://www.instagram.com" target="_blank">Instagram</a>
+                <a href="https://www.snapchat.com" target="_blank">Snapchat</a>
+                <a href="https://www.twitter.com" target="_blank">Twitter</a>
+                <a href="https://www.youtube.com" target="_blank">YouTube</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="banner">
+        <h1>Download Your Favorite Media</h1>
+        <?php if ($this->session->flashdata('error')): ?>
+            <div class="alert alert-danger">
+                <?php echo $this->session->flashdata('error'); ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($this->session->flashdata('success')): ?>
+            <div class="alert alert-success">
+                <?php echo $this->session->flashdata('success'); ?>
+            </div>
+        <?php endif; ?>
+        <form action="<?php echo site_url('videodownloader/get_video_info'); ?>" method="post">
+            <input type="text" id="video_url" name="video_url" class="form-control" placeholder="Enter video URL" required>
+            <button type="submit" class="btn btn-primary">Click To Download</button>
+        </form>
+    </section>
+
+    <div id="progress-container" style="display: none;">
+        <div class="progress mt-3">
+            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+        </div>
+        <div id="progress-text" class="mt-2"></div>
+    </div>
+
+    <section class="videos" id="videos">
+        <h2>Downloaded Videos</h2>
+        <div class="video-item">
+            <video width="320" height="240" controls>
+                <source src="movie.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <p>This is a video description. It provides a brief explanation of the video content.</p>
+        </div>
+    </section>
+
+    <section class="faq" id="faq">
+        <h2>Frequently Asked Questions</h2>
+        <div class="faq-item">
+            <p>Q1: How can I download videos?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q2: What formats are supported?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q3: Is there a limit on the number of downloads?</p>
+        </div>
+    </section>
+
+    <script>
+        function startProgressCheck() {
+            $('#progress-container').show();
+            function checkProgress() {
+                $.ajax({
+                    url: '<?php echo site_url('videodownloader/get_progress'); ?>',
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        var progress = data.progress;
+                        $('#progress-bar').css('width', progress + '%');
+                        if (progress < 100) {
+                            $('#progress-bar').addClass('progress-bar-danger');
+                        } else if (progress < 100) {
+                            $('#progress-bar').addClass('progress-bar-warning');
+                        } else {
+                            $('#progress-bar').addClass('progress-bar-success');
+                        }
+                        $('#progress-text').text('Download progress: ' + progress + '%');
+                        if (progress < 100) {
+                            setTimeout(checkProgress, 1000);
+                        } else {
+                            $('#progress-text').text('Download complete!');
+                        }
+                    }
+                });
+            }
+            checkProgress();
+        }
+
+        $(document).ready(function() {
+            $('form').on('submit', function() {
+                startProgressCheck();
+            });
+        });
+    </script>
+</body>
+</html>
+this is a controller
+isuuse of illegal call to a function
+
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+class VideoDownloader extends CI_Controller {
+
+    public function __construct() {
+        parent::__construct();
+        $this->load->helper('url');
+        $this->load->helper('form');
+        $this->load->library('session');
+    }
+
+    public function index() {
+        $this->load->view('video_downloader_form');
+    }
+
+    public function get_video_info() {
+        $video_url = $this->input->post('video_url');
+        if (empty($video_url)) {
+            $this->session->set_flashdata('error', 'Video URL is required.');
+            redirect('videodownloader');
+        }
+
+        $command = "yt-dlp -F " . escapeshellarg($video_url) . " 2>&1";
+        $output = shell_exec($command);
+
+        if (strpos($output, 'format code') === false) {
+            $this->session->set_flashdata('success', 'No formats found.');
+            $this->download_video_default($video_url);
+            return;
+        }
+
+        $data['video_info'] = $output;
+        $data['video_url'] = $video_url;
+        $this->load->view('video_info', $data);
+    }
+
+    public function download_video() {
+        $video_url = $this->input->post('video_url');
+        $format_id = $this->input->post('format_id');
+
+        if (empty($video_url) || empty($format_id)) {
+            $this->session->set_flashdata('error', 'Both video URL and format ID are required.');
+            redirect('videodownloader');
+        }
+
+        $this->session->set_userdata('download_progress', 0);
+
+        $command = "yt-dlp -f " . escapeshellarg($format_id) . " " . escapeshellarg($video_url) . " -o '/path/to/save/%(title)s.%(ext)s' --newline | stdbuf -oL grep --line-buffered '%' | stdbuf -oL sed -u 's/.* \([0-9]*\)\%.*/\\1/'";
+        $process = popen($command, 'r');
+
+        while (!feof($process)) {
+            $progress = intval(fgets($process));
+            $this->session->set_userdata('download_progress', $progress);
+        }
+
+        pclose($process);
+        $this->session->set_userdata('download_progress', 100);
+    }
+
+    public function get_progress() {
+        $progress = $this->session->userdata('download_progress');
+        echo json_encode(['progress' => $progress]);
+    }
+
+    private function output_video($file_path, $download_name) {
+        if (file_exists($file_path)) {
+            $this->load->helper('file');
+            $mime = get_mime_by_extension($file_path);
+            header('Content-Description: File Transfer');
+            header('Content-Type: ' . $mime);
+            header('Content-Disposition: attachment; filename="' . $download_name . '"');
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file_path));
+            readfile($file_path);
+            unlink($file_path);
+            exit;
+        } else {
+            $this->session->set_flashdata('error', 'Failed to download video.');
+            redirect('videodownloader');
+        }
+    }
+
+    public function download_video_default($video_url) {
+        $default_format_id = 'best';
+        $command = "yt-dlp -f " . escapeshellarg($default_format_id) . " " . escapeshellarg($video_url) . " -o '/path/to/save/%(title)s.%(ext)s' --newline | stdbuf -oL grep --line-buffered '%' | stdbuf -oL sed -u 's/.* \([0-9]*\)\%.*/\\1/'";
+        $process = popen($command, 'r');
+
+        while (!feof($process)) {
+            $progress = intval(fgets($process));
+            $this->session->set_userdata('download_progress', $progress);
+        }
+
+        pclose($process);
+        $this->session->set_userdata('download_progress', 100);
+    }
+}
+ -->
+
+
+
+
+
+
+
+
+
+
+<!-- 
+ that is a first code that downloads video but do not show progress bar
+"this is a controler
+"
+
+
+defined('BASEPATH') OR exit('No direct script access allowed');
+
+class VideoDownloader extends CI_Controller {
+
+    public function __construct() {
+        parent::__construct();
+        $this->load->helper('url');
+        $this->load->helper('form');
+        $this->load->library('session'); // Load the session library
+    }
+
+    public function index() {
+        $this->load->view('video_downloader_form');
+    }
+
+    public function get_video_info() {
+        $video_url = $this->input->post('video_url');
+        if (empty($video_url)) {
+            $this->session->set_flashdata('error', 'Video URL is required.');
+            redirect('videodownloader');
+        }
+
+        // Execute yt-dlp command to get available formats
+        $command = "yt-dlp -F " . escapeshellarg($video_url) . " 2>&1";
+        $output = shell_exec($command);
+        
+        // Check if the output contains any formats
+        if (strpos($output, 'format code') === false) {
+            // No formats found, start download with default format
+            $this->session->set_flashdata('success', 'No formats found.');
+            $this->download_video_default($video_url); // Call the method to download with a default format
+            return;
+        }
+
+        $data['video_info'] = $output;
+        $data['video_url'] = $video_url;
+        $this->load->view('video_info', $data);
+    }
+
+    public function download_video() {
+        $video_url = $this->input->post('video_url');
+        $format_id = $this->input->post('format_id');
+
+        if (empty($video_url) || empty($format_id)) {
+            $this->session->set_flashdata('error', 'Both video URL and format ID are required.');
+            redirect('videodownloader');
+        }
+
+        // Define the temporary directory and ensure it exists
+        $temp_dir = 'C:/wamp64/www/examplevideo/temp';
+        if (!is_dir($temp_dir)) {
+            mkdir($temp_dir, 0777, true);
+        }
+
+        // Execute yt-dlp command to download the video to a temporary file
+        $temp_file = tempnam($temp_dir, 'video_') . '.mp4';
+        $command = "yt-dlp -f " . escapeshellarg($format_id) . " " . escapeshellarg($video_url) . " -o " . escapeshellarg($temp_file) . " 2>&1";
+        $output = shell_exec($command);
+
+        if (file_exists($temp_file)) {
+            $this->output_video($temp_file, basename($video_url) . '.mp4');
+        } else {
+            $this->session->set_flashdata('error', 'Failed to start download.');
+            redirect('videodownloader');
+        }
+    }
+
+    private function output_video($file_path, $download_name) {
+        if (file_exists($file_path)) {
+            $this->load->helper('file');
+            $mime = get_mime_by_extension($file_path);
+            header('Content-Description: File Transfer');
+            header('Content-Type: ' . $mime);
+            header('Content-Disposition: attachment; filename="' . $download_name . '"');
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file_path));
+            readfile($file_path);
+            unlink($file_path); // Delete the temporary file
+            exit;
+        } else {
+            $this->session->set_flashdata('error', 'Failed to download video.');
+            redirect('videodownloader');
+        }
+    }
+
+    public function download_video_default($video_url) {
+        // Default format ID (adjust as necessary)
+        $default_format_id = 'best'; // or any other default format ID
+    
+        // Define the temporary directory and ensure it exists
+        $temp_dir = 'C:/wamp64/www/examplevideo/temp';
+        if (!is_dir($temp_dir)) {
+            mkdir($temp_dir, 0777, true);
+        }
+    
+        // Execute yt-dlp command to download the video to a temporary file
+        $temp_file = tempnam($temp_dir, 'video_') . '.mp4';
+        $command = "yt-dlp -f " . escapeshellarg($default_format_id) . " " . escapeshellarg($video_url) . " -o " . escapeshellarg($temp_file) . " 2>&1";
+        $output = shell_exec($command);
+    
+        if (file_exists($temp_file)) {
+            $this->output_video($temp_file, basename($video_url) . '.mp4');
+        } else {
+            $this->session->set_flashdata('error', 'Failed to start download .');
+            redirect('videodownloader');
+        }
+    }
+}
+"
+this is a video_download_form
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <link rel="stylesheet" href="<?= base_url() ?>asset/style.css">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+  
+</head>
+<body>
+    <!-- Header -->
+    <header style="height: 50px;display:flex;">
+        <div style="display: flex;align-items: center;">
+            <img src="<?=base_url()?>asset/logo" alt="" style="height:175;width:173px">
+        </div>
+        <div style="display: flex;margin-left: 800px;">
+            <nav>
+                <a href="https://www.tiktok.com" target="_blank">TikTok</a>
+                <a href="https://www.instagram.com" target="_blank">Instagram</a>
+                <a href="https://www.snapchat.com" target="_blank">Snapchat</a>
+                <a href="https://www.twitter.com" target="_blank">Twitter</a>
+                <a href="https://www.youtube.com" target="_blank">YouTube</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Banner -->
+    <section class="banner">
+        <h1>Download Your Favorite Media</h1>
+        <?php if ($this->session->flashdata('error')): ?>
+            <div class="alert alert-danger">
+                <?php echo $this->session->flashdata('error'); ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($this->session->flashdata('success')): ?>
+            <div class="alert alert-success">
+                <?php echo $this->session->flashdata('success'); ?>
+            </div>
+        <?php endif; ?>
+        <form action="<?php echo site_url('videodownloader/get_video_info'); ?>" method="post">
+            <input type="text" id="video_url" name="video_url" class="form-control" placeholder="Enter video URL" required>
+            <button type="submit" class="btn btn-primary">Click To Download</button>
+        </form>
+    </section>
+
+    <!-- Video Section -->
+    <section class="videos" id="videos">
+        <h2>Downloaded Videos</h2>
+        <div class="video-item">
+            <video width="320" height="240" controls>
+                <source src="movie.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <p>This is a video description. It provides a brief explanation of the video content.</p>
+        </div>
+    </section>
+
+    <!-- FAQ Section -->
+    <section class="faq" id="faq">
+        <h2>Frequently Asked Questions</h2>
+        <div class="faq-item">
+            <p>Q1: How can I download videos?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q2: What formats are supported?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q3: Is there a limit on the number of downloads?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q4: Are there any subscription fees?</p>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <p>&copy; 2024 Media Downloader. All rights reserved.</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
+"
+"
+this is a second code in which downloading bar works but download not work
+"
+this is a controller
+"defined('BASEPATH') OR exit('No direct script access allowed');
+
+class VideoDownloader extends CI_Controller {
+
+    public function __construct() {
+        parent::__construct();
+        $this->load->helper('url');
+        $this->load->helper('form');
+        $this->load->library('session');
+    }
+
+    public function index() {
+        $this->load->view('video_downloader_form');
+    }
+
+    public function get_video_info() {
+        $video_url = $this->input->post('video_url');
+        if (empty($video_url)) {
+            $this->session->set_flashdata('error', 'Video URL is required.');
+            redirect('videodownloader');
+        }
+
+        $command = "yt-dlp -F " . escapeshellarg($video_url) . " 2>&1";
+        $output = shell_exec($command);
+
+        if (strpos($output, 'format code') === false) {
+            $this->session->set_flashdata('success', 'No formats found.');
+            $this->download_video_default($video_url);
+            return;
+        }
+
+        $data['video_info'] = $output;
+        $data['video_url'] = $video_url;
+        $this->load->view('video_info', $data);
+    }
+
+    public function download_video() {
+        $video_url = $this->input->post('video_url');
+        $format_id = $this->input->post('format_id');
+
+        if (empty($video_url) || empty($format_id)) {
+            $this->session->set_flashdata('error', 'Both video URL and format ID are required.');
+            redirect('videodownloader');
+        }
+
+        $this->session->set_userdata('download_progress', 0);
+
+        $command = "yt-dlp -f " . escapeshellarg($format_id) . " " . escapeshellarg($video_url) . " -o '/path/to/save/%(title)s.%(ext)s' --newline | stdbuf -oL grep --line-buffered '%' | stdbuf -oL sed -u 's/.* \([0-9]*\)\%.*/\\1/'";
+        $process = popen($command, 'r');
+
+        while (!feof($process)) {
+            $progress = intval(fgets($process));
+            $this->session->set_userdata('download_progress', $progress);
+        }
+
+        pclose($process);
+        $this->session->set_userdata('download_progress', 100);
+    }
+
+    public function get_progress() {
+        $progress = $this->session->userdata('download_progress');
+        echo json_encode(['progress' => $progress]);
+    }
+
+    private function output_video($file_path, $download_name) {
+        if (file_exists($file_path)) {
+            $this->load->helper('file');
+            $mime = get_mime_by_extension($file_path);
+            header('Content-Description: File Transfer');
+            header('Content-Type: ' . $mime);
+            header('Content-Disposition: attachment; filename="' . $download_name . '"');
+            header('Expires: 0');
+            header('Cache-Control: must-revalidate');
+            header('Pragma: public');
+            header('Content-Length: ' . filesize($file_path));
+            readfile($file_path);
+            unlink($file_path);
+            exit;
+        } else {
+            $this->session->set_flashdata('error', 'Failed to download video.');
+            redirect('videodownloader');
+        }
+    }
+
+    public function download_video_default($video_url) {
+        $default_format_id = 'best';
+        $command = "yt-dlp -f " . escapeshellarg($default_format_id) . " " . escapeshellarg($video_url) . " -o '/path/to/save/%(title)s.%(ext)s' --newline | stdbuf -oL grep --line-buffered '%' | stdbuf -oL sed -u 's/.* \([0-9]*\)\%.*/\\1/'";
+        $process = popen($command, 'r');
+
+        while (!feof($process)) {
+            $progress = intval(fgets($process));
+            $this->session->set_userdata('download_progress', $progress);
+        }
+
+        pclose($process);
+        $this->session->set_userdata('download_progress', 100);
+    }
+}"
+this is video_downloader_form
+"<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Downloader</title>
+    <link rel="stylesheet" href="<?= base_url() ?>asset/style.css">
+    <link href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <style>
+        .progress-bar-danger {
+            background-color: #dc3545; /* Red */
+        }
+        .progress-bar-warning {
+            background-color: #ffc107; /* Yellow */
+        }
+        .progress-bar-success {
+            background-color: #28a745; /* Green */
+        }
+    </style>
+</head>
+<body>
+    <header style="height: 50px;display:flex;">
+        <div style="display: flex;align-items: center;">
+            <img src="<?=base_url()?>asset/logo" alt="" style="height:175;width:173px">
+        </div>
+        <div style="display: flex;margin-left: 800px;">
+            <nav>
+                <a href="https://www.tiktok.com" target="_blank">TikTok</a>
+                <a href="https://www.instagram.com" target="_blank">Instagram</a>
+                <a href="https://www.snapchat.com" target="_blank">Snapchat</a>
+                <a href="https://www.twitter.com" target="_blank">Twitter</a>
+                <a href="https://www.youtube.com" target="_blank">YouTube</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="banner">
+        <h1>Download Your Favorite Media</h1>
+        <?php if ($this->session->flashdata('error')): ?>
+            <div class="alert alert-danger">
+                <?php echo $this->session->flashdata('error'); ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($this->session->flashdata('success')): ?>
+            <div class="alert alert-success">
+                <?php echo $this->session->flashdata('success'); ?>
+            </div>
+        <?php endif; ?>
+        <form action="<?php echo site_url('videodownloader/get_video_info'); ?>" method="post">
+            <input type="text" id="video_url" name="video_url" class="form-control" placeholder="Enter video URL" required>
+            <button type="submit" class="btn btn-primary">Click To Download</button>
+        </form>
+    </section>
+
+    <div id="progress-container" style="display: none;">
+        <div class="progress mt-3">
+            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+        </div>
+        <div id="progress-text" class="mt-2"></div>
+    </div>
+
+    <section class="videos" id="videos">
+        <h2>Downloaded Videos</h2>
+        <div class="video-item">
+            <video width="320" height="240" controls>
+                <source src="movie.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+            </video>
+            <p>This is a video description. It provides a brief explanation of the video content.</p>
+        </div>
+    </section>
+
+    <section class="faq" id="faq">
+        <h2>Frequently Asked Questions</h2>
+        <div class="faq-item">
+            <p>Q1: How can I download videos?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q2: What formats are supported?</p>
+        </div>
+        <div class="faq-item">
+            <p>Q3: Is there a limit on the number of downloads?</p>
+        </div>
+    </section>
+
+    <script>
+        function startProgressCheck() {
+            $('#progress-container').show();
+            function checkProgress() {
+                $.ajax({
+                    url: '<?php echo site_url('videodownloader/get_progress'); ?>',
+                    method: 'GET',
+                    dataType: 'json',
+                    success: function(data) {
+                        var progress = data.progress;
+                        $('#progress-bar').css('width', progress + '%');
+                        if (progress < 100) {
+                            $('#progress-bar').addClass('progress-bar-danger');
+                        } else if (progress < 100) {
+                            $('#progress-bar').addClass('progress-bar-warning');
+                        } else {
+                            $('#progress-bar').addClass('progress-bar-success');
+                        }
+                        $('#progress-text').text('Download progress: ' + progress + '%');
+                        if (progress < 100) {
+                            setTimeout(checkProgress, 1000);
+                        } else {
+                            $('#progress-text').text('Download complete!');
+                        }
+                    }
+                });
+            }
+            checkProgress();
+        }
+
+        $(document).ready(function() {
+            $('form').on('submit', function() {
+                startProgressCheck();
+            });
+        });
+    </script>
+</body>
+</html>"
+" -->
